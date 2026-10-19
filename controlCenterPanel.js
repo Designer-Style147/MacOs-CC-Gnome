@@ -107,6 +107,10 @@ import {QuickMenuToggle, QuickToggle} from 'resource:///org/gnome/shell/ui/quick
 import {Slider} from 'resource:///org/gnome/shell/ui/slider.js';
 import * as Util from 'resource:///org/gnome/shell/misc/util.js';
 
+import {attachBlur, backend as blurBackend, detachBlur} from './blur.js';
+import {GlassRim} from './glass.js';
+import {glassAvailable, MenuGlass} from './glassSurface.js';
+
 const LOG_PREFIX = '[macos-control-center]';
 
 // Gio.DBusConnection.call() is callback based; promisify it once so every
@@ -350,7 +354,7 @@ function createTileTint(fill = false) {
  * @param {St.Button} button
  * @returns {St.Button} the same button, for chaining
  */
-function addTileTint(button) {
+function addTileTint(button, {rim = 'full'} = {}) {
     // St.Bin only allocates the one child it manages, so a tint inserted as a
     // second child of the button is never given a size and never paints (this is
     // why the round shortcuts, Focus and Edit Controls had no fill on the glass).
@@ -363,6 +367,12 @@ function addTileTint(button) {
         y_expand: true,
     });
     host.add_child(createTileTint(true));
+
+    // The glass rim is the topmost layer: tint, content, rim.
+    const rimActor = rim ? new GlassRim({radius: rim}) : null;
+    if (rimActor)
+        host.add_child(rimActor);
+
     button.set_child(host);
 
     let content = null;
@@ -373,10 +383,108 @@ function addTileTint(button) {
         if (content) {
             content.get_parent()?.remove_child(content);
             host.add_child(content);
+            if (rimActor)
+                host.set_child_below_sibling(content, rimActor);
         }
     };
 
     return button;
+}
+
+/**
+ * The pieces of a menu that are a bubble of glass: what the glass has to be put
+ * behind, and what the opening cascade animates. The transport buttons of the
+ * media card are not bubbles.
+ *
+ * @param {Clutter.Actor} root
+ * @returns {St.Widget[]} visible bubbles in layout order
+ */
+function collectBubbles(root) {
+    const targets = [];
+
+    const isBubble = actor => actor instanceof St.Widget && (
+        actor.has_style_class_name('cc-pill') ||
+        actor.has_style_class_name('cc-card') ||
+        actor.has_style_class_name('cc-bottom-button') ||
+        actor.has_style_class_name('cc-gallery-row') ||
+        actor.has_style_class_name('cc-segment-button') ||
+        actor.has_style_class_name('cc-battery-hero') ||
+        actor.has_style_class_name('quick-toggle') ||
+        (actor.has_style_class_name('cc-icon-button') &&
+            !actor.has_style_class_name('cc-media-button')));
+
+    const visit = parent => {
+        for (const child of parent.get_children()) {
+            if (!child.visible)
+                continue;
+
+            if (isBubble(child))
+                targets.push(child);
+            else
+                visit(child);
+        }
+    };
+    visit(root);
+
+    return targets;
+}
+
+/**
+ * Real glass takes over the look of a menu: the fills, borders and the drawn
+ * rim of the bubbles give way to the glass behind them.
+ *
+ * @param {St.Widget} box the menu's box
+ * @param {boolean} active
+ */
+function setGlassActive(box, active) {
+    if (active)
+        box.add_style_class_name('cc-glass-active');
+    else
+        box.remove_style_class_name('cc-glass-active');
+
+    const setRims = actor => {
+        for (const child of actor.get_children()) {
+            if (child instanceof GlassRim)
+                child.visible = !active;
+            else
+                setRims(child);
+        }
+    };
+    setRims(box);
+}
+
+/** What the glass behind a menu is made of: dark and smoked, under white text. */
+const MENU_GLASS = {
+    tint: [0.10, 0.10, 0.14],
+    tintStrength: 0.30,
+    cornerRadius: 30,
+    blurRadius: 10,
+    brightness: 1.0,
+    saturation: 1.4,
+};
+
+/** The blur every bubble carries: a capsule/circle clipped to its own shape. */
+const BUBBLE_BLUR = {sigma: 22, brightness: 1.0, radius: 'full'};
+
+/**
+ * Press feedback: the bubble gives a little under the pointer and springs back.
+ * Only paint-time transforms are animated, so the layout never moves.
+ *
+ * @param {St.Button} button
+ */
+function addPressFeedback(button) {
+    button.set_pivot_point(0.5, 0.5);
+    button.connect('notify::pressed', () => {
+        const down = button.pressed;
+        button.ease({
+            scale_x: down ? 0.94 : 1,
+            scale_y: down ? 0.94 : 1,
+            duration: down ? 80 : 300,
+            mode: down
+                ? Clutter.AnimationMode.EASE_OUT_QUAD
+                : Clutter.AnimationMode.EASE_OUT_BACK,
+        });
+    });
 }
 
 /** Circular, icon-only button used for every small square in the grid. */
@@ -412,6 +520,13 @@ class CCIconButton extends St.Button {
         // Paint order: the tile tint first, the glyph on top of it.
         addTileTint(this);
         this.set_child(this._iconWidget);
+
+        // Only the grid shortcuts are bubbles; the media transport buttons are
+        // bare glyphs.
+        if (fill) {
+            attachBlur(this, BUBBLE_BLUR);
+            addPressFeedback(this);
+        }
     }
 
     /** @type {St.Icon} */
@@ -523,6 +638,25 @@ class CCPillButton extends St.Button {
         // Paint order: the tile tint first, the pill's content on top of it.
         addTileTint(this);
         this.set_child(content);
+
+        attachBlur(this, BUBBLE_BLUR);
+        addPressFeedback(this);
+        if (!withSwitch)
+            this.connectObject('notify::checked', () => this._pulseIcon(), this);
+    }
+
+    /** The icon disc pops when the tile is switched. */
+    _pulseIcon() {
+        const disc = this._iconCircle;
+        disc.remove_all_transitions();
+        disc.set_pivot_point(0.5, 0.5);
+        disc.set({scale_x: 0.68, scale_y: 0.68});
+        disc.ease({
+            scale_x: 1,
+            scale_y: 1,
+            duration: 420,
+            mode: Clutter.AnimationMode.EASE_OUT_BACK,
+        });
     }
 
     /** @type {St.Icon} */
@@ -577,9 +711,30 @@ class CCSliderRow extends St.BoxLayout {
         this.slider = new Slider(0);
         this.slider.accessible_name = accessibleName;
 
+        // The track is BarLevel's own bar; the knob is a separate piece of glass
+        // laid over it, because BarLevel can only draw a round handle. The knob
+        // takes no input, so every press and drag still goes to the slider.
+        this._track = new St.Widget({
+            layout_manager: new Clutter.BinLayout(),
+            x_expand: true,
+            y_expand: true,
+        });
+        this._track.add_child(this.slider);
+
+        this._thumb = new St.Widget({
+            style_class: 'cc-slider-thumb',
+            layout_manager: new Clutter.BinLayout(),
+            reactive: false,
+            x_align: Clutter.ActorAlign.START,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        this._thumb.set_pivot_point(0.5, 0.5);
+        this._thumb.add_child(new GlassRim({radius: 'full', rim: 1.1}));
+        this._track.add_child(this._thumb);
+
         this._sliderBin = new St.Bin({
-            style_class: 'cc-slider-bin',
-            child: this.slider,
+            style_class: 'cc-slider-bin cc-slider-glass',
+            child: this._track,
             reactive: true,
             x_expand: true,
             y_align: Clutter.ActorAlign.CENTER,
@@ -595,7 +750,45 @@ class CCSliderRow extends St.BoxLayout {
         this.slider.connectObject(
             'key-focus-in', () => this._sliderBin.add_style_pseudo_class('focus'),
             'key-focus-out', () => this._sliderBin.remove_style_pseudo_class('focus'),
+            'notify::value', () => this._syncThumb(),
             this);
+        this._track.connectObject('notify::allocation', () => this._syncThumb(), this);
+
+        // The knob swells while it is held, and springs back.
+        try {
+            this.slider.connectObject(
+                'drag-begin', () => this._holdThumb(true),
+                'drag-end', () => this._holdThumb(false),
+                this);
+        } catch (e) {
+            console.warn(`macos-control-center: no drag signals on the slider: ${e.message}`);
+        }
+    }
+
+    /**
+     * The knob sits on the end of the fill, kept inside the track: at the ends
+     * the fill reaches past the knob's centre, as on macOS.
+     */
+    _syncThumb() {
+        const trackWidth = this._track.width;
+        if (trackWidth <= 0)
+            return;
+
+        const knobWidth = this._thumb.width > 0 ? this._thumb.width : 34;
+        const x = this.slider.value * trackWidth - knobWidth / 2;
+        this._thumb.translation_x = Math.max(0, Math.min(trackWidth - knobWidth, x));
+    }
+
+    /** @param {boolean} held */
+    _holdThumb(held) {
+        this._thumb.ease({
+            scale_x: held ? 1.22 : 1,
+            scale_y: held ? 1.22 : 1,
+            duration: held ? 120 : 340,
+            mode: held
+                ? Clutter.AnimationMode.EASE_OUT_QUAD
+                : Clutter.AnimationMode.EASE_OUT_BACK,
+        });
     }
 });
 
@@ -690,6 +883,8 @@ class CCGalleryRow extends St.Button {
         // Paint order: the tile tint first, the row's content on top of it.
         addTileTint(this);
         this.set_child(box);
+        attachBlur(this, BUBBLE_BLUR);
+        addPressFeedback(this);
 
         this.connect('notify::checked', () => {
             this._check.visible = this.checked;
@@ -1045,6 +1240,22 @@ export class ControlCenterPanel extends PanelMenu.Button {
         // unless a glass extension clears them, so it gets a class too.
         this.menu.box.add_style_class_name('cc-bubbles');
         this.menu.actor.add_style_class_name('cc-bubbles-pointer');
+        // With real (rounded) blur behind them the bubbles are clear glass; without
+        // it they stay smoked so the text remains legible.
+        if (blurBackend === 'rounded' || blurBackend === 'square')
+            this.menu.box.add_style_class_name('cc-blur-active');
+
+        // The glass behind the bubbles, created when the menu is first opened.
+        this._menuGlass = glassAvailable
+            ? new MenuGlass({
+                path: extension.path,
+                owner: 'control-center',
+                menu: this.menu,
+                collect: () => collectBubbles(this.menu.box),
+                onActive: active => setGlassActive(this.menu.box, active),
+                material: MENU_GLASS,
+            })
+            : null;
 
         this._section = new PopupMenu.PopupMenuSection();
         this.menu.addMenuItem(this._section);
@@ -1073,9 +1284,11 @@ export class ControlCenterPanel extends PanelMenu.Button {
             // The stage-level drag listeners must not outlive the popup.
             if (!isOpen) {
                 this._endDrag();
+                this._resetBubbles();
                 return;
             }
 
+            this._playOpenAnimation();
             this._mpris?._selectPlayer();
 
             if (!this._wifiReady)
@@ -1088,6 +1301,64 @@ export class ControlCenterPanel extends PanelMenu.Button {
             if (this._gallery.visible)
                 this._refreshGallery();
         }, this);
+    }
+
+    /* ------------------------------------------------------------- animation */
+
+    /**
+     * The bubbles of the main page, in layout order.
+     * @returns {St.Widget[]}
+     */
+    _bubbleTargets() {
+        return this._content ? collectBubbles(this._content) : [];
+    }
+
+    /**
+     * The bubbles rise into place one after another, each overshooting a little
+     * before it settles. Opacity and the transform ease with different curves:
+     * an overshooting curve would push the opacity past its range.
+     */
+    _playOpenAnimation() {
+        this._resetBubbles();
+
+        const targets = this._bubbleTargets();
+        this._animatedBubbles = targets;
+
+        targets.forEach((actor, index) => {
+            const delay = 30 + index * 26;
+
+            actor.remove_all_transitions();
+            actor.set_pivot_point(0.5, 0.5);
+            actor.set({opacity: 0, scale_x: 0.86, scale_y: 0.86, translation_y: 14});
+
+            actor.ease({
+                opacity: 255,
+                duration: 220,
+                delay,
+                mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+            });
+            actor.ease({
+                scale_x: 1,
+                scale_y: 1,
+                translation_y: 0,
+                duration: 420,
+                delay,
+                mode: Clutter.AnimationMode.EASE_OUT_BACK,
+            });
+        });
+    }
+
+    /** Puts every bubble back to rest, so a closed menu never keeps a half-played state. */
+    _resetBubbles() {
+        for (const actor of this._animatedBubbles ?? []) {
+            try {
+                actor.remove_all_transitions();
+                actor.set({opacity: 255, scale_x: 1, scale_y: 1, translation_y: 0});
+            } catch {
+                // The actor was destroyed since (arrange mode, an adopted control removed).
+            }
+        }
+        this._animatedBubbles = [];
     }
 
     /* ---------------------------------------------------------------- layout */
@@ -1369,6 +1640,7 @@ export class ControlCenterPanel extends PanelMenu.Button {
             orientation: Clutter.Orientation.VERTICAL,
             x_expand: true,
         });
+        attachBlur(card, {sigma: 22, radius: 28});
 
         this._mediaArtIcon = new St.Icon({
             icon_name: 'audio-x-generic-symbolic',
@@ -1454,6 +1726,7 @@ export class ControlCenterPanel extends PanelMenu.Button {
             orientation: Clutter.Orientation.VERTICAL,
             x_expand: true,
         });
+        attachBlur(card, {sigma: 22, radius: 24});
 
         card.add_child(new St.Label({
             text: title,
@@ -1545,6 +1818,11 @@ export class ControlCenterPanel extends PanelMenu.Button {
         this._doneButton.set_child(doneBox);
         this._doneButton.connect('clicked', () => this._setEditMode(false));
         bar.add_child(this._doneButton);
+
+        for (const button of [this._editButton, this._addButton, this._doneButton]) {
+            attachBlur(button, BUBBLE_BLUR);
+            addPressFeedback(button);
+        }
 
         return bar;
     }
@@ -1917,6 +2195,8 @@ export class ControlCenterPanel extends PanelMenu.Button {
         // the control's checked state, so an adopted tile brightens when on
         // exactly like the built-in Wi-Fi / Bluetooth tiles do.
         const tint = createTileTint();
+        tint.set_layout_manager(new Clutter.BinLayout());
+        tint.add_child(new GlassRim({radius: 'full'}));
         const syncTint = () => {
             if (item.checked)
                 tint.add_style_class_name('cc-tile-on');
@@ -1934,6 +2214,10 @@ export class ControlCenterPanel extends PanelMenu.Button {
             this._layout.set(identifier, this._nextFreeRect());
 
         item.connectObject('destroy', () => this._onAdoptedItemDestroyed(identifier), this);
+
+        // The control is the Shell's (or another extension's); the blur is ours
+        // and is taken off again in _detachAdopted().
+        attachBlur(item, BUBBLE_BLUR);
 
         try {
             this._relayoutCustomGrid();
@@ -1959,6 +2243,7 @@ export class ControlCenterPanel extends PanelMenu.Button {
 
         const {item, parent, index, span, menuEnabled, tint} = record;
         item.disconnectObject(this);
+        detachBlur(item);
 
         const currentParent = item.get_parent();
         if (currentParent)
@@ -2916,6 +3201,9 @@ export class ControlCenterPanel extends PanelMenu.Button {
     /* ------------------------------------------------------------ teardown */
 
     destroy() {
+        this._menuGlass?.destroy();
+        this._menuGlass = null;
+
         this._endDrag();
         this._destroyEditOverlays();
 
@@ -3147,8 +3435,9 @@ class CCStatusIndicator extends PanelMenu.Button {
      * @param {(text: string) => string} params.gettext
      * @param {string} params.accessibleName
      * @param {string} params.iconName
+     * @param {string} params.path the extension's directory, where the glass shaders live
      */
-    _init({gettext, accessibleName, iconName}) {
+    _init({gettext, accessibleName, iconName, path}) {
         super._init(0.0, accessibleName);
 
         this._gettext = gettext;
@@ -3177,6 +3466,23 @@ class CCStatusIndicator extends PanelMenu.Button {
         this.menu.box.add_style_class_name('cc-menu');
         // A dropdown, not a grid of bubbles: flat rows on one sheet.
         this.menu.box.add_style_class_name('cc-glyph-menu');
+        // No sheet: every header, row and card is its own piece of glass, exactly
+        // as in the control centre.
+        this.menu.box.add_style_class_name('cc-bubbles');
+        this.menu.actor.add_style_class_name('cc-bubbles-pointer');
+        if (blurBackend === 'rounded' || blurBackend === 'square')
+            this.menu.box.add_style_class_name('cc-blur-active');
+
+        this._menuGlass = glassAvailable
+            ? new MenuGlass({
+                path,
+                owner: 'status-menu',
+                menu: this.menu,
+                collect: () => collectBubbles(this.menu.box),
+                onActive: active => setGlassActive(this.menu.box, active),
+                material: MENU_GLASS,
+            })
+            : null;
 
         this._section = new PopupMenu.PopupMenuSection();
         this.menu.addMenuItem(this._section);
@@ -3410,6 +3716,9 @@ class CCStatusIndicator extends PanelMenu.Button {
 
     destroy() {
         this._destroyed = true;
+
+        this._menuGlass?.destroy();
+        this._menuGlass = null;
 
         if (this._visibilityId) {
             GLib.source_remove(this._visibilityId);
@@ -4495,6 +4804,7 @@ export class BatteryStatusIndicator extends CCStatusIndicator {
 
         hero.add_child(this._heroIcon);
         hero.add_child(heroText);
+        attachBlur(hero, {sigma: 22, radius: 24});
         this._menuContent.add_child(hero);
 
         // The level as a bar: a Slider with nothing to drag. BarLevel keeps
@@ -4677,6 +4987,8 @@ export class BatteryStatusIndicator extends CCStatusIndicator {
         // Paint order: the tile tint first, the label on top of it.
         addTileTint(button);
         button.set_child(content);
+        attachBlur(button, BUBBLE_BLUR);
+        addPressFeedback(button);
 
         return button;
     }

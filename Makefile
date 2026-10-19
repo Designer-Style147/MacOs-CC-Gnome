@@ -16,7 +16,11 @@
 
 SRC_DIR    := $(CURDIR)
 BUILD_DIR  := $(SRC_DIR)/build
-FILES      := metadata.json extension.js controlCenterPanel.js stylesheet.css
+FILES      := metadata.json extension.js controlCenterPanel.js spotlight.js blur.js glass.js glassSurface.js stylesheet.css
+JS_FILES   := $(filter %.js,$(FILES))
+# Folders shipped whole: the menu-bar icon, the vendored Liquid Glass renderer (lg/)
+# and its shaders. Each is copied when present.
+ASSET_DIRS := icons lg shaders
 
 # --- Derived values ---------------------------------------------------------
 
@@ -49,7 +53,7 @@ help:
 	@echo "    make nested       Launch a nested gnome-shell to test without logout"
 	@echo ""
 	@echo "  Packaging / QA"
-	@echo "    make check        Validate metadata.json, ESM syntax and CSS"
+	@echo "    make check        Validate metadata.json, imports, ESM syntax and CSS"
 	@echo "    make zip          Build the extensions.gnome.org upload archive"
 	@echo "    make pack         Build it with 'gnome-extensions pack' instead"
 	@echo "    make clean        Remove build artefacts"
@@ -67,6 +71,13 @@ help:
 install: check
 	@mkdir -p "$(EXT_DIR)"
 	@cp -v $(FILES) "$(EXT_DIR)/"
+	@for d in $(ASSET_DIRS); do \
+		if [ -d "$$d" ]; then \
+			echo "  copy   $$d/"; \
+			mkdir -p "$(EXT_DIR)/$$d"; \
+			cp -R "$$d/." "$(EXT_DIR)/$$d/"; \
+		fi; \
+	done
 	@if [ -d schemas ]; then \
 		echo "  schema  compiling GSettings schemas"; \
 		mkdir -p "$(EXT_DIR)/schemas"; \
@@ -124,6 +135,22 @@ check:
 	else \
 		echo "  skip  metadata.json JSON parse (no python3/jq/node)"; \
 	fi
+	@for f in $(FILES); do \
+		[ -f "$$f" ] || { echo "  FAIL  $$f is listed in FILES but missing"; exit 1; }; \
+	done; echo "  ok    every file in FILES exists"
+	@for f in $(JS_FILES); do \
+		for imp in $$(sed -n "s/.*from '\.\/\([^']*\)'.*/\1/p" "$$f"); do \
+			case " $(FILES) " in \
+				*" $$imp "*) ;; \
+				*) echo "  FAIL  $$f imports ./$$imp, which is not in FILES"; exit 1;; \
+			esac; \
+		done; \
+	done; echo "  ok    every local import is shipped"
+	@if [ -d lg ] && [ -f shaders/glass.frag ] && [ -f shaders/downsample.frag ] && [ -f shaders/upsample.frag ]; then \
+		echo "  ok    the glass renderer (lg/, shaders/) is present"; \
+	else \
+		echo "  warn  lg/ or shaders/ is missing: the glass renderer will not load, plain blur is used"; \
+	fi
 	@grep -q '"51"' metadata.json \
 		&& echo "  ok    shell-version lists 51" \
 		|| { echo "  FAIL  shell-version does not list 51"; exit 1; }
@@ -139,7 +166,7 @@ check:
 	fi
 	@if [ -n "$(NODE)" ]; then \
 		tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT INT TERM; \
-		for f in extension.js controlCenterPanel.js; do \
+		for f in $(JS_FILES); do \
 			cp "$$f" "$$tmp/$${f%.js}.mjs" || exit 1; \
 			$(NODE) --check "$$tmp/$${f%.js}.mjs" \
 				|| { echo "  FAIL  syntax error in $$f"; exit 1; }; \
@@ -161,6 +188,12 @@ zip: check
 	@rm -rf "$(BUILD_DIR)/stage"
 	@mkdir -p "$(BUILD_DIR)/stage"
 	@cp $(FILES) "$(BUILD_DIR)/stage/"
+	@for d in $(ASSET_DIRS); do \
+		if [ -d "$$d" ]; then \
+			mkdir -p "$(BUILD_DIR)/stage/$$d"; \
+			cp -R "$$d/." "$(BUILD_DIR)/stage/$$d/"; \
+		fi; \
+	done
 	@if [ -d schemas ]; then \
 		mkdir -p "$(BUILD_DIR)/stage/schemas"; \
 		cp schemas/*.xml "$(BUILD_DIR)/stage/schemas/"; \
@@ -175,6 +208,12 @@ pack: check
 	@rm -rf "$(BUILD_DIR)/$(UUID)"
 	@mkdir -p "$(BUILD_DIR)/$(UUID)"
 	@cp $(FILES) "$(BUILD_DIR)/$(UUID)/"
+	@for d in $(ASSET_DIRS); do \
+		if [ -d "$$d" ]; then \
+			mkdir -p "$(BUILD_DIR)/$(UUID)/$$d"; \
+			cp -R "$$d/." "$(BUILD_DIR)/$(UUID)/$$d/"; \
+		fi; \
+	done
 	@if [ -d schemas ]; then \
 		mkdir -p "$(BUILD_DIR)/$(UUID)/schemas"; \
 		cp schemas/*.xml "$(BUILD_DIR)/$(UUID)/schemas/"; \
@@ -197,6 +236,7 @@ info:
 	@echo "BUILD_DIR   = $(BUILD_DIR)"
 	@echo "ZIP         = $(ZIP)"
 	@echo "FILES       = $(FILES)"
+	@echo "ASSET_DIRS  = $(ASSET_DIRS)"
 	@echo "node        = $(if $(NODE),$(NODE),<missing>)"
 	@echo "gnome-ext   = $(if $(GSETTINGS),$(GSETTINGS),<missing>)"
 

@@ -127,6 +127,9 @@
 .cc-bubbles .cc-pill,
 .cc-bubbles .cc-icon-button,
 .cc-bubbles .cc-bottom-button,
+.cc-bubbles .cc-gallery-row,
+.cc-bubbles .cc-segment-button,
+.cc-bubbles .cc-battery-hero,
 .cc-bubbles.cc-menu .cc-custom-grid .quick-toggle {
     background-color: rgba(40, 40, 46, 0.50);
     background-gradient-direction: vertical;
@@ -1060,46 +1063,113 @@
 }
 
 /* --------------------------------------------------------------------------
- * macOS-style dropdowns (Wi-Fi / Bluetooth / battery)
+ * Bubbles over real blur
  *
- * Unlike the control centre these keep one sheet of glass, and inside it are
- * flat: a header with a switch, plain rows that only light up under the
- * pointer, and a segmented control. Every selector below carries
- * `.cc-glyph-menu`, so nothing here reaches the control centre.
+ * When the blur backend is there (see blur.js) every bubble blurs what is behind
+ * it, so the smoked fill is swapped for clear glass: a light tint lit from above,
+ * a bright rim and a brighter inner top edge. The accent states are restated
+ * because the generic rule below is more specific than their own.
  * -------------------------------------------------------------------------- */
 
-.popup-menu-content.cc-menu.cc-glyph-menu {
-    width: 300px;
-    padding: 10px;
-    spacing: 6px;
+.cc-bubbles.cc-blur-active .cc-pill,
+.cc-bubbles.cc-blur-active .cc-icon-button,
+.cc-bubbles.cc-blur-active .cc-bottom-button,
+.cc-bubbles.cc-blur-active .cc-gallery-row,
+.cc-bubbles.cc-blur-active .cc-segment-button,
+.cc-bubbles.cc-blur-active .cc-battery-hero,
+.cc-bubbles.cc-blur-active.cc-menu .cc-custom-grid .quick-toggle {
+    background-color: rgba(255, 255, 255, 0.10);
+    background-gradient-direction: vertical;
+    background-gradient-start: rgba(255, 255, 255, 0.22);
+    background-gradient-end: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.42);
 }
 
-.cc-glyph-menu .macos-control-center,
-.cc-glyph-menu .cc-status-column {
-    spacing: 4px;
+.cc-bubbles.cc-blur-active .cc-pill:checked,
+.cc-bubbles.cc-blur-active .cc-custom-grid .quick-toggle:checked {
+    background-gradient-start: rgba(255, 255, 255, 0.32);
+    background-gradient-end: rgba(255, 255, 255, 0.15);
 }
 
-.cc-glyph-menu .cc-status-list {
-    spacing: 1px;
+.cc-bubbles.cc-blur-active .cc-icon-button:checked,
+.cc-bubbles.cc-blur-active .cc-segment-button:checked,
+.cc-bubbles.cc-blur-active .cc-gallery-row:checked,
+.cc-bubbles.cc-blur-active .cc-bottom-done {
+    background-color: rgba(10, 132, 255, 0.85);
+    background-gradient-direction: none;
 }
 
-/* --- the header: title + switch ------------------------------------------- */
+.cc-bubbles.cc-blur-active .cc-record-button.cc-recording {
+    background-color: rgba(255, 69, 58, 0.85);
+    background-gradient-direction: none;
+}
 
-.cc-glyph-menu .cc-pill,
-.cc-glyph-menu .cc-pill:hover,
-.cc-glyph-menu .cc-pill:focus,
-.cc-glyph-menu .cc-pill:active,
-.cc-glyph-menu .cc-pill:checked {
+.cc-bubbles.cc-blur-active .cc-media-button,
+.cc-bubbles.cc-blur-active .cc-media-button:hover,
+.cc-bubbles.cc-blur-active .cc-media-button:focus {
     background-color: transparent;
     background-gradient-direction: none;
     border: none;
     box-shadow: none;
-    border-radius: 10px;
-    min-height: 40px;
 }
 
-.cc-glyph-menu .cc-pill-content {
-    padding: 4px 8px;
+/* --------------------------------------------------------------------------
+ * The glass slider
+ *
+ * A thin track filled in white, and a knob that is a piece of glass of its own
+ * (a lit capsule laid over the track by CCSliderRow, see glass.js for its rim).
+ * -------------------------------------------------------------------------- */
+
+.cc-slider-bin.cc-slider-glass,
+.cc-slider-bin.cc-slider-glass:hover,
+.cc-slider-bin.cc-slider-glass:focus {
+    height: 30px;
+    border: none;
+    border-radius: 0;
+    background-color: transparent;
+}
+
+.cc-slider-bin.cc-slider-glass .slider {
+    -barlevel-height: 8px;
+    -barlevel-background-color: rgba(255, 255, 255, 0.30);
+    -barlevel-active-background-color: rgba(255, 255, 255, 0.96);
+}
+
+.cc-slider-thumb {
+    width: 34px;
+    height: 22px;
+    border-radius: 999px;
+    background-color: rgba(255, 255, 255, 0.34);
+    background-gradient-direction: vertical;
+    background-gradient-start: rgba(255, 255, 255, 0.62);
+    background-gradient-end: rgba(255, 255, 255, 0.26);
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.30);
+}
+
+/* --------------------------------------------------------------------------
+ * The dropdowns (Wi-Fi / Bluetooth / battery)
+ *
+ * Bubble mode, like the control centre: no sheet, so every header, row, card
+ * and segment is its own piece of glass (fills come from the `.cc-bubbles`
+ * rules above). Only what is left to say lives here: the size of the menu, the
+ * spacing between bubbles, and legible captions over a bare wallpaper.
+ * -------------------------------------------------------------------------- */
+
+.popup-menu-content.cc-menu.cc-glyph-menu {
+    width: 308px;
+    padding: 6px;
+    spacing: 10px;
+}
+
+.cc-glyph-menu .macos-control-center,
+.cc-glyph-menu .cc-status-column {
+    spacing: 10px;
+}
+
+.cc-glyph-menu .cc-status-list {
+    spacing: 8px;
 }
 
 .cc-glyph-menu .cc-pill-title {
@@ -1107,113 +1177,342 @@
     font-weight: 700;
 }
 
-.cc-glyph-menu .cc-pill-subtitle {
-    font-size: 11px;
-}
-
-.cc-menu.cc-glyph-menu.cc-glass-host .cc-pill .cc-tile-tint,
-.cc-menu.cc-glyph-menu.cc-glass-host .cc-pill:checked .cc-tile-tint {
-    background-color: transparent;
-    background-gradient-direction: none;
-    border: none;
-    box-shadow: none;
-    border-radius: 10px;
-}
-
-/* --- section headings ------------------------------------------------------ */
-
-.cc-glyph-menu .cc-status-section {
-    font-size: 11px;
-    font-weight: 700;
-    padding: 8px 8px 2px;
-}
-
-.cc-glyph-menu .cc-status-hint {
-    padding: 4px 8px;
-}
-
-/* --- rows: flat, highlighted only under the pointer ------------------------ */
-
-.cc-glyph-menu .cc-gallery-row,
-.cc-glyph-menu .cc-gallery-row:hover,
-.cc-glyph-menu .cc-gallery-row:focus,
-.cc-glyph-menu .cc-gallery-row:checked {
-    background-color: transparent;
-    border-radius: 8px;
-    min-height: 36px;
-}
-
-.cc-glyph-menu .cc-gallery-row:hover,
-.cc-glyph-menu .cc-gallery-row:focus {
-    background-color: rgba(255, 255, 255, 0.18);
+.cc-glyph-menu .cc-gallery-row {
+    min-height: 52px;
+    border-radius: 999px;
 }
 
 .cc-glyph-menu .cc-gallery-row-content {
-    padding: 4px 8px;
+    padding: 6px 16px 6px 12px;
 }
 
-.cc-glyph-menu .cc-gallery-row-title {
-    font-size: 13px;
+.cc-glyph-menu .cc-battery-hero {
+    border-radius: 24px;
+    padding: 14px 18px;
 }
 
-.cc-menu.cc-glyph-menu.cc-glass-host .cc-gallery-row .cc-tile-tint,
-.cc-menu.cc-glyph-menu.cc-glass-host .cc-gallery-row:checked .cc-tile-tint {
+.cc-glyph-menu .cc-segment {
+    spacing: 8px;
+}
+
+.cc-glyph-menu .cc-segment-button {
+    min-height: 40px;
+}
+
+/* Captions float on the wallpaper, so they carry their own shadow. */
+.cc-glyph-menu .cc-status-section,
+.cc-glyph-menu .cc-status-hint {
+    color: rgba(255, 255, 255, 0.92);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+    padding: 4px 10px 0;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+/* --------------------------------------------------------------------------
+ * Spotlight
+ *
+ * Three separate pieces of light glass, as on macOS 26: the search capsule, a
+ * round button per view, and, once there is something to show, a card of
+ * results below. Each is blurred on its own (spotlight.js) and carries the lit
+ * rim (glass.js); what is here is the fill, the text and the shape.
+ * -------------------------------------------------------------------------- */
+
+.cc-spot-backdrop {
+    background-color: transparent;
+}
+
+.cc-spot-column {
+    width: 724px;
+    spacing: 12px;
+}
+
+.cc-spot-top {
+    spacing: 12px;
+}
+
+.cc-spot-bar,
+.cc-spot-circle,
+.cc-spot-card {
+    background-color: rgba(255, 255, 255, 0.50);
+    background-gradient-direction: vertical;
+    background-gradient-start: rgba(255, 255, 255, 0.74);
+    background-gradient-end: rgba(240, 248, 255, 0.46);
+    border: 1px solid rgba(255, 255, 255, 0.70);
+    box-shadow: 0 14px 34px rgba(30, 40, 60, 0.26);
+    color: rgba(36, 38, 46, 0.92);
+}
+
+.cc-spot-bar {
+    border-radius: 999px;
+    min-height: 62px;
+}
+
+.cc-spot-card {
+    border-radius: 30px;
+}
+
+.cc-spot-circle {
+    width: 62px;
+    height: 62px;
+    border-radius: 999px;
+    padding: 0;
+    background-color: rgba(205, 232, 255, 0.52);
+    background-gradient-start: rgba(214, 236, 255, 0.78);
+    background-gradient-end: rgba(190, 222, 250, 0.50);
+}
+
+.cc-spot-circle:hover,
+.cc-spot-circle:focus {
+    background-gradient-start: rgba(228, 243, 255, 0.90);
+    background-gradient-end: rgba(206, 232, 255, 0.64);
+}
+
+.cc-spot-circle:selected {
+    background-gradient-start: rgba(150, 202, 255, 0.92);
+    background-gradient-end: rgba(110, 176, 250, 0.80);
+    color: #0a3a78;
+}
+
+.cc-spot-circle-icon {
+    icon-size: 24px;
+}
+
+/* --- the search capsule ------------------------------------------------------ */
+
+.cc-spot-search-row {
+    spacing: 12px;
+    padding: 0 22px;
+}
+
+.cc-spot-search-icon {
+    icon-size: 24px;
+    color: rgba(60, 62, 70, 0.78);
+}
+
+.cc-spot-entry {
+    background-color: transparent;
+    background-image: none;
+    border: none;
+    box-shadow: none;
+    padding: 4px 0;
+    min-height: 34px;
+    font-size: 23px;
+    color: rgba(28, 30, 38, 0.96);
+    caret-color: rgba(28, 30, 38, 0.92);
+    caret-size: 2px;
+    selection-background-color: rgba(10, 132, 255, 0.40);
+    selected-color: #ffffff;
+}
+
+.cc-spot-entry:focus {
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
+}
+
+.cc-spot-entry StLabel.hint-text,
+.cc-spot-entry .hint-text {
+    color: rgba(60, 62, 70, 0.42);
+}
+
+/* --- the card of results ------------------------------------------------------ */
+
+.cc-spot-card-content {
+    padding: 12px 12px 10px;
+    spacing: 6px;
+}
+
+.cc-spot-chips {
+    spacing: 8px;
+    padding: 2px 4px 4px;
+}
+
+.cc-spot-chip {
+    min-height: 22px;
+    padding: 2px 14px;
+    border-radius: 999px;
+    background-color: rgba(255, 255, 255, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.75);
+    color: rgba(50, 52, 60, 0.86);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.cc-spot-chip:hover,
+.cc-spot-chip:focus {
+    background-color: rgba(255, 255, 255, 0.80);
+}
+
+.cc-spot-chip:selected {
+    background-color: rgba(10, 132, 255, 0.82);
+    border-color: rgba(10, 132, 255, 0.90);
+    color: #ffffff;
+}
+
+.cc-spot-scroll {
+    max-height: 468px;
+}
+
+.cc-spot-list {
+    spacing: 2px;
+}
+
+.cc-spot-row {
+    border-radius: 16px;
+    background-color: transparent;
+    padding: 0;
+    color: rgba(30, 32, 40, 0.96);
+}
+
+.cc-spot-row:hover {
+    background-color: rgba(60, 62, 70, 0.08);
+}
+
+.cc-spot-row:selected {
+    background-color: rgba(60, 62, 70, 0.16);
+}
+
+.cc-spot-row-content {
+    spacing: 12px;
+    padding: 7px 12px;
+}
+
+.cc-spot-row-icon {
+    icon-size: 36px;
+}
+
+.cc-spot-row-text {
+    spacing: 1px;
+}
+
+.cc-spot-row-title {
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.cc-spot-row-subtitle {
+    font-size: 11px;
+    color: rgba(60, 62, 70, 0.66);
+}
+
+.cc-spot-empty {
+    font-size: 14px;
+    color: rgba(60, 62, 70, 0.60);
+    padding: 18px 0 14px;
+}
+
+/* --- the Applications view ------------------------------------------------------ */
+
+.cc-spot-grid-scroll {
+    max-height: 372px;
+}
+
+.cc-spot-grid {
+    spacing: 4px;
+    padding-top: 4px;
+}
+
+.cc-spot-grid-row {
+    spacing: 0;
+}
+
+.cc-spot-app {
+    width: 116px;
+    border-radius: 16px;
+    background-color: transparent;
+    padding: 0;
+    color: rgba(30, 32, 40, 0.96);
+}
+
+.cc-spot-app:hover,
+.cc-spot-app:focus {
+    background-color: rgba(60, 62, 70, 0.08);
+}
+
+.cc-spot-app:selected {
+    background-color: rgba(60, 62, 70, 0.16);
+}
+
+.cc-spot-app-content {
+    spacing: 6px;
+    padding: 8px 4px 6px;
+}
+
+.cc-spot-app-label {
+    font-size: 11px;
+    font-weight: 500;
+    max-width: 104px;
+}
+
+/* --------------------------------------------------------------------------
+ * Real glass
+ *
+ * When the Liquid Glass renderer is behind a surface (glassSurface.js) the glass
+ * draws the material of every bubble: blur, refraction at the edge, rim light and
+ * tint. The bubbles keep only their content, and the states that mean something:
+ * on (checked), recording, and a touch of light under the pointer.
+ * -------------------------------------------------------------------------- */
+
+.cc-bubbles.cc-glass-active .cc-pill,
+.cc-bubbles.cc-glass-active .cc-icon-button,
+.cc-bubbles.cc-glass-active .cc-bottom-button,
+.cc-bubbles.cc-glass-active .cc-gallery-row,
+.cc-bubbles.cc-glass-active .cc-segment-button,
+.cc-bubbles.cc-glass-active .cc-battery-hero,
+.cc-bubbles.cc-glass-active .cc-card,
+.cc-bubbles.cc-glass-active.cc-menu .cc-custom-grid .quick-toggle {
     background-color: transparent;
     background-gradient-direction: none;
     border: none;
     box-shadow: none;
-    border-radius: 8px;
 }
 
-.cc-menu.cc-glyph-menu.cc-glass-host .cc-gallery-row:hover .cc-tile-tint,
-.cc-menu.cc-glyph-menu.cc-glass-host .cc-gallery-row:focus .cc-tile-tint {
-    background-color: rgba(255, 255, 255, 0.20);
+.cc-bubbles.cc-glass-active .cc-pill:hover,
+.cc-bubbles.cc-glass-active .cc-icon-button:hover,
+.cc-bubbles.cc-glass-active .cc-gallery-row:hover,
+.cc-bubbles.cc-glass-active .cc-bottom-button:hover,
+.cc-bubbles.cc-glass-active .cc-custom-grid .quick-toggle:hover {
+    background-color: rgba(255, 255, 255, 0.08);
 }
 
-/* --- battery --------------------------------------------------------------- */
-
-.cc-glyph-menu .cc-battery-hero {
-    background-color: transparent;
-    padding: 4px 8px;
-}
-
-/* The power mode as one segmented control: a single capsule holding the
- * choices, the active one lifted out of it in white. */
-.cc-glyph-menu .cc-segment {
-    spacing: 2px;
-    padding: 3px;
-    border-radius: 999px;
+.cc-bubbles.cc-glass-active .cc-pill:checked,
+.cc-bubbles.cc-glass-active .cc-custom-grid .quick-toggle:checked {
     background-color: rgba(255, 255, 255, 0.16);
 }
 
-.cc-glyph-menu .cc-segment-button,
-.cc-glyph-menu .cc-segment-button:hover,
-.cc-glyph-menu .cc-segment-button:focus {
+.cc-bubbles.cc-glass-active .cc-icon-button:checked,
+.cc-bubbles.cc-glass-active .cc-segment-button:checked,
+.cc-bubbles.cc-glass-active .cc-gallery-row:checked,
+.cc-bubbles.cc-glass-active .cc-bottom-done {
+    background-color: rgba(10, 132, 255, 0.78);
+}
+
+.cc-bubbles.cc-glass-active .cc-record-button.cc-recording {
+    background-color: rgba(255, 69, 58, 0.78);
+}
+
+.cc-bubbles.cc-glass-active .cc-media-button,
+.cc-bubbles.cc-glass-active .cc-media-button:hover,
+.cc-bubbles.cc-glass-active .cc-media-button:focus {
     background-color: transparent;
-    border: none;
-    min-height: 30px;
 }
 
-.cc-glyph-menu .cc-segment-button:checked {
-    background-color: rgba(255, 255, 255, 0.92);
-    color: #1d1d1f;
-}
-
-.cc-glyph-menu .cc-segment-content {
-    padding: 5px 8px;
-}
-
-.cc-menu.cc-glyph-menu.cc-glass-host .cc-segment-button .cc-tile-tint {
+/* Spotlight */
+.cc-spot-column.cc-glass-active .cc-spot-bar,
+.cc-spot-column.cc-glass-active .cc-spot-circle,
+.cc-spot-column.cc-glass-active .cc-spot-card {
     background-color: transparent;
     background-gradient-direction: none;
     border: none;
     box-shadow: none;
 }
 
-.cc-menu.cc-glyph-menu.cc-glass-host .cc-segment-button:checked .cc-tile-tint {
-    background-color: rgba(255, 255, 255, 0.92);
+.cc-spot-column.cc-glass-active .cc-spot-circle:hover,
+.cc-spot-column.cc-glass-active .cc-spot-circle:focus {
+    background-color: rgba(255, 255, 255, 0.22);
 }
 
-.cc-glyph-menu .cc-segment-button:checked .cc-segment-label {
-    color: #1d1d1f;
+.cc-spot-column.cc-glass-active .cc-spot-circle:selected {
+    background-color: rgba(10, 132, 255, 0.30);
 }

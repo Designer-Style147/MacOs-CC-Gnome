@@ -20,11 +20,13 @@ import {
     ControlCenterPanel,
     WifiStatusIndicator,
 } from './controlCenterPanel.js';
+import {Spotlight} from './spotlight.js';
 
 export default class ControlCenterExtension extends Extension {
     #panel = null;
     #indicators = [];
     #clockHome = null;
+    #spotlight = null;
 
     enable() {
         const gettext = this.gettext.bind(this);
@@ -33,10 +35,11 @@ export default class ControlCenterExtension extends Extension {
 
         // Radios first, then the battery, so the battery ends up beside the
         // control centre button the way the reference has it.
+        const params = {gettext, path: this.path};
         const glyphs = [
-            ['wifi', new WifiStatusIndicator({gettext})],
-            ['bluetooth', new BluetoothStatusIndicator({gettext})],
-            ['battery', new BatteryStatusIndicator({gettext})],
+            ['wifi', new WifiStatusIndicator(params)],
+            ['bluetooth', new BluetoothStatusIndicator(params)],
+            ['battery', new BatteryStatusIndicator(params)],
         ];
 
         // A stale indicator of an earlier enable would still hold the role, and
@@ -56,6 +59,15 @@ export default class ControlCenterExtension extends Extension {
 
         this.#arrangeStatusArea();
 
+        // Spotlight is independent of the bar: if it cannot start, the control
+        // centre and the glyphs above are unaffected.
+        try {
+            this.#spotlight = new Spotlight(this);
+        } catch (e) {
+            console.error(`macos-control-center: Spotlight failed to start: ${e.message}`);
+            this.#spotlight = null;
+        }
+
         // The Shell moves the clock back to the centre box on every session
         // mode change (lock, unlock, login screen), so the arrangement has to
         // be re-applied. #arrangeStatusArea() itself ignores those modes.
@@ -66,6 +78,9 @@ export default class ControlCenterExtension extends Extension {
 
     disable() {
         Main.sessionMode.disconnectObject(this);
+
+        this.#spotlight?.destroy();
+        this.#spotlight = null;
 
         this.#restoreClock();
 
