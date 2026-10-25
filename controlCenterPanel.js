@@ -110,6 +110,7 @@ import * as Util from 'resource:///org/gnome/shell/misc/util.js';
 import {attachBlur, backend as blurBackend, detachBlur} from './blur.js';
 import {GlassRim} from './glass.js';
 import {glassAvailable, MenuGlass} from './glassSurface.js';
+import {iconProps as namedIconProps, setIcon} from './icons.js';
 
 const LOG_PREFIX = '[macos-control-center]';
 
@@ -453,6 +454,22 @@ function setGlassActive(box, active) {
     setRims(box);
 }
 
+/**
+ * The corner radius of a bubble's glass, px. Capsules and circles ask for more
+ * than they can have, which the shader limits to half their shorter side; the
+ * cards keep the radius macOS gives them.
+ *
+ * @param {Clutter.Actor} actor
+ * @returns {number}
+ */
+function glassRadiusOf(actor) {
+    if (actor.has_style_class_name('cc-media-card'))
+        return 30;
+    if (actor.has_style_class_name('cc-card') || actor.has_style_class_name('cc-battery-hero'))
+        return 26;
+    return 999;
+}
+
 /** What the glass behind a menu is made of: dark and smoked, under white text. */
 const MENU_GLASS = {
     tint: [0.10, 0.10, 0.14],
@@ -514,7 +531,7 @@ class CCIconButton extends St.Button {
         });
 
         this._iconWidget = new St.Icon({
-            icon_name: iconName,
+            ...namedIconProps(iconName),
             style_class: 'cc-icon-button-icon',
         });
         // Paint order: the tile tint first, the glyph on top of it.
@@ -570,7 +587,7 @@ class CCPillButton extends St.Button {
             style_class: 'cc-pill-icon-circle',
             y_align: Clutter.ActorAlign.CENTER,
             child: new St.Icon({
-                icon_name: iconName,
+                ...namedIconProps(iconName),
                 style_class: 'cc-pill-icon',
             }),
         });
@@ -753,6 +770,7 @@ class CCSliderRow extends St.BoxLayout {
             'notify::value', () => this._syncThumb(),
             this);
         this._track.connectObject('notify::allocation', () => this._syncThumb(), this);
+        this._thumb.connectObject('notify::allocation', () => this._syncThumb(), this);
 
         // The knob swells while it is held, and springs back.
         try {
@@ -774,9 +792,20 @@ class CCSliderRow extends St.BoxLayout {
         if (trackWidth <= 0)
             return;
 
+        // BarLevel draws value / maximum: a volume slider's maximum is above 1
+        // (it can be pushed past 100%), so the plain value would put the knob
+        // beyond the end of the fill.
+        const maximum = this.slider.maximum_value > 0 ? this.slider.maximum_value : 1;
+        const fraction = Math.max(0, Math.min(1, this.slider.value / maximum));
+
         const knobWidth = this._thumb.width > 0 ? this._thumb.width : 34;
-        const x = this.slider.value * trackWidth - knobWidth / 2;
-        this._thumb.translation_x = Math.max(0, Math.min(trackWidth - knobWidth, x));
+        const wanted = Math.max(0, Math.min(trackWidth - knobWidth,
+            fraction * trackWidth - knobWidth / 2));
+
+        // The layout puts the knob wherever its alignment says (the middle of the
+        // track, as it turned out); the translation is what is needed on top of
+        // that to get it to `wanted`.
+        this._thumb.translation_x = wanted - this._thumb.x;
     }
 
     /** @param {boolean} held */
@@ -834,7 +863,7 @@ class CCGalleryRow extends St.Button {
         if (gicon)
             iconProps.gicon = gicon;
         else
-            iconProps.icon_name = iconName ?? 'application-x-executable-symbolic';
+            Object.assign(iconProps, namedIconProps(iconName ?? 'application-x-executable-symbolic'));
         this._iconWidget = new St.Icon(iconProps);
         box.add_child(this._iconWidget);
 
@@ -1253,6 +1282,7 @@ export class ControlCenterPanel extends PanelMenu.Button {
                 menu: this.menu,
                 collect: () => collectBubbles(this.menu.box),
                 onActive: active => setGlassActive(this.menu.box, active),
+                radiusOf: glassRadiusOf,
                 material: MENU_GLASS,
             })
             : null;
@@ -1421,7 +1451,7 @@ export class ControlCenterPanel extends PanelMenu.Button {
 
         // --- the modules ----------------------------------------------------
         this._wifiPill = new CCPillButton({
-            iconName: 'network-wireless-symbolic',
+            iconName: 'ext:wifi-3',
             title: this._gettext('Wi-Fi'),
             styleClass: 'cc-wifi-pill',
             toggleMode: true,
@@ -1498,7 +1528,7 @@ export class ControlCenterPanel extends PanelMenu.Button {
          */
         this._builtInModules = [
             {id: 'wifi', widget: this._wifiPill, w: 2, h: 1,
-             title: this._gettext('Wi-Fi'), icon: 'network-wireless-symbolic'},
+             title: this._gettext('Wi-Fi'), icon: 'ext:wifi-3'},
             {id: 'media', widget: this._mediaCard, w: 2, h: 2,
              title: this._gettext('Now Playing'), icon: 'audio-x-generic-symbolic'},
             {id: 'bluetooth', widget: this._bluetoothPill, w: 2, h: 1,
@@ -3296,11 +3326,17 @@ function decodeSsid(bytes) {
     if (!bytes || bytes.length === 0)
         return '';
 
+    let text;
     try {
-        return new TextDecoder('utf-8', {fatal: false}).decode(bytes);
+        text = new TextDecoder('utf-8', {fatal: false}).decode(bytes);
     } catch (e) {
-        return String.fromCharCode(...bytes);
+        text = String.fromCharCode(...bytes);
     }
+
+    // A hidden network announces an SSID of NUL bytes (or blanks). That is no
+    // name, and listing it gives rows with nothing written on them.
+    text = text.replace(/[\u0000-\u001f\u007f]/g, '');
+    return text.trim() === '' ? '' : text;
 }
 
 /**
@@ -3360,54 +3396,55 @@ function formatDuration(seconds, gettext) {
 }
 
 /**
- * The signal glyph for a Wi-Fi strength. The thresholds are the Shell's own
- * (js/ui/status/network.js), so the glyph always agrees with the Quick Settings
- * tile next to it.
+ * The signal glyph for a Wi-Fi strength: one, two or three bars. The boundaries
+ * are the Shell's own (js/ui/status/network.js: weak below 40, ok and good below
+ * 80), so the bars still agree with the Quick Settings tile next to them. A
+ * signal too weak to count (below 20) has no bars of ours: the theme's empty
+ * glyph stands for it.
  *
  * @param {number} strength 0-100
- * @returns {string} an Adwaita icon name
+ * @returns {string} an icon name, see icons.js
  */
 export function wifiSignalIcon(strength) {
     if (strength < 20)
         return 'network-wireless-signal-none-symbolic';
     if (strength < 40)
-        return 'network-wireless-signal-weak-symbolic';
-    if (strength < 50)
-        return 'network-wireless-signal-ok-symbolic';
+        return 'ext:wifi-1';
     if (strength < 80)
-        return 'network-wireless-signal-good-symbolic';
-    return 'network-wireless-signal-excellent-symbolic';
+        return 'ext:wifi-2';
+    return 'ext:wifi-3';
 }
 
 /**
- * The battery glyph, mirroring the Shell's own SystemIndicator
- * (js/ui/status/system.js): the level is floored to the nearest ten, charging
- * adds `-charging` (`-plugged-in` for a charge-limited battery) and a full
- * battery is `battery-level-100-charged-symbolic`.
- *
- * UPower's own `IconName` is deliberately unused: it still hands out the legacy
- * `battery-full-symbolic` family, which is not drawn in the same style as the
- * `battery-level-*` glyphs Quick Settings uses.
+ * The battery glyph: empty, a quarter, half, three quarters or full, with a bolt
+ * while the battery is charging (or held at a charge limit with the charger in).
+ * A full battery that is no longer charging has no bolt. UPower's own `IconName`
+ * is deliberately unused: it names the theme's icons, not these.
  *
  * @param {number} percentage 0-100
  * @param {number} state a UPower device state, see the UPOWER_STATE_* constants
  * @param {boolean} chargeThresholdEnabled UPower's `ChargeThresholdEnabled`
- * @returns {string} an Adwaita icon name
+ * @returns {string} an icon name, see icons.js
  */
 export function batteryGlyphIcon(percentage, state, chargeThresholdEnabled) {
-    let suffix = '';
-    if (state === UPOWER_STATE_CHARGING)
-        suffix = '-charging';
-    else if (state === UPOWER_STATE_PENDING_CHARGE && chargeThresholdEnabled)
-        suffix = '-plugged-in';
+    if (state === UPOWER_STATE_FULLY_CHARGED)
+        return 'ext:battery-100';
 
-    const level = Math.max(0, 10 * Math.floor(percentage / 10));
-    const charged = state === UPOWER_STATE_FULLY_CHARGED ||
-        (state === UPOWER_STATE_CHARGING && level === 100);
+    const charging = state === UPOWER_STATE_CHARGING ||
+        (state === UPOWER_STATE_PENDING_CHARGE && chargeThresholdEnabled);
 
-    return charged
-        ? 'battery-level-100-charged-symbolic'
-        : `battery-level-${level}${suffix}-symbolic`;
+    // Each picture stands for the range around it.
+    let level = 100;
+    if (percentage < 10)
+        level = 0;
+    else if (percentage < 37)
+        level = 25;
+    else if (percentage < 62)
+        level = 50;
+    else if (percentage < 87)
+        level = 75;
+
+    return `ext:battery-${level}${charging ? '-charging' : ''}`;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -3454,7 +3491,7 @@ class CCStatusIndicator extends PanelMenu.Button {
         this._menuBuilt = false;
 
         this._icon = new St.Icon({
-            icon_name: iconName,
+            ...namedIconProps(iconName),
             style_class: 'system-status-icon',
         });
 
@@ -3480,6 +3517,7 @@ class CCStatusIndicator extends PanelMenu.Button {
                 menu: this.menu,
                 collect: () => collectBubbles(this.menu.box),
                 onActive: active => setGlassActive(this.menu.box, active),
+                radiusOf: glassRadiusOf,
                 material: MENU_GLASS,
             })
             : null;
@@ -3615,8 +3653,7 @@ class CCStatusIndicator extends PanelMenu.Button {
      *   hides its glyph entirely.
      */
     _setGlyph(iconName, available) {
-        if (this._icon.icon_name !== iconName)
-            this._icon.icon_name = iconName;
+        setIcon(this._icon, iconName);
 
         this._available = available;
         this._applyVisibility();
@@ -3969,7 +4006,7 @@ export class WifiStatusIndicator extends CCStatusIndicator {
 
     _buildMenu() {
         this._wifiToggle = new CCPillButton({
-            iconName: 'network-wireless-symbolic',
+            iconName: 'ext:wifi-3',
             title: this._gettext('Wi-Fi'),
             subtitle: this._gettext('Off'),
             styleClass: 'cc-wifi-pill',
@@ -4015,11 +4052,11 @@ export class WifiStatusIndicator extends CCStatusIndicator {
             : (connected ? this._gettext('Connected') : this._gettext('Not connected'));
 
         const strength = this._accessPoint?.get_cached_property('Strength')?.unpack() ?? 0;
-        this._wifiToggle.icon.icon_name = connected
+        setIcon(this._wifiToggle.icon, connected
             ? wifiSignalIcon(strength)
             : (enabled
                 ? 'network-wireless-signal-none-symbolic'
-                : 'network-wireless-disabled-symbolic');
+                : 'network-wireless-disabled-symbolic'));
 
         if (connected)
             this._wifiToggle.add_style_class_name('cc-connected');
@@ -4582,7 +4619,9 @@ export class BluetoothStatusIndicator extends CCStatusIndicator {
      */
     _createDeviceRow(device) {
         const row = new CCGalleryRow({
-            iconName: bluetoothDeviceIcon(device.icon),
+            iconName: /airpods/i.test(device.name ?? '')
+                ? 'ext:airpods'
+                : bluetoothDeviceIcon(device.icon),
             title: device.name,
             subtitle: device.connected ? this._gettext('Connected') : this._gettext('Not connected'),
         });
@@ -4666,6 +4705,9 @@ export class BatteryStatusIndicator extends CCStatusIndicator {
             accessibleName: params.gettext('Battery'),
             iconName: 'battery-missing-symbolic',
         });
+
+        // The battery is wider than it is tall, so its glyph gets more room.
+        this._icon.add_style_class_name('cc-glyph-battery');
 
         this._upower = null;      // org.freedesktop.UPower
         this._device = null;      // its display device
@@ -4851,7 +4893,7 @@ export class BatteryStatusIndicator extends CCStatusIndicator {
         const chargeThresholdEnabled =
             device?.get_cached_property('ChargeThresholdEnabled')?.unpack() ?? false;
 
-        this._heroIcon.icon_name = batteryGlyphIcon(percentage, state, chargeThresholdEnabled);
+        setIcon(this._heroIcon, batteryGlyphIcon(percentage, state, chargeThresholdEnabled));
         this._heroPercent.text = `${percentage}%`;
         this._heroState.text = this._stateText(device, state);
         this._batterySlider.value = percentage / 100;

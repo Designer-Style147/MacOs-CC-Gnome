@@ -1212,10 +1212,10 @@
 /* --------------------------------------------------------------------------
  * Spotlight
  *
- * Three separate pieces of light glass, as on macOS 26: the search capsule, a
- * round button per view, and, once there is something to show, a card of
- * results below. Each is blurred on its own (spotlight.js) and carries the lit
- * rim (glass.js); what is here is the fill, the text and the shape.
+ * One capsule that grows into a panel, and four round buttons beside it while
+ * Alt is held, as on macOS 26. With the glass renderer the glass is the material
+ * and this is only the text and the states; without it each piece is a light
+ * glass fill (and a blur, see blur.js). Radii here serve that fallback.
  * -------------------------------------------------------------------------- */
 
 .cc-spot-backdrop {
@@ -1224,16 +1224,14 @@
 
 .cc-spot-column {
     width: 724px;
-    spacing: 12px;
 }
 
 .cc-spot-top {
     spacing: 12px;
 }
 
-.cc-spot-bar,
-.cc-spot-circle,
-.cc-spot-card {
+.cc-spot-panel,
+.cc-spot-circle {
     background-color: rgba(255, 255, 255, 0.50);
     background-gradient-direction: vertical;
     background-gradient-start: rgba(255, 255, 255, 0.74);
@@ -1243,13 +1241,12 @@
     color: rgba(36, 38, 46, 0.92);
 }
 
-.cc-spot-bar {
+.cc-spot-panel {
     border-radius: 999px;
-    min-height: 62px;
 }
 
-.cc-spot-card {
-    border-radius: 30px;
+.cc-spot-panel.cc-spot-expanded {
+    border-radius: 28px;
 }
 
 .cc-spot-circle {
@@ -1268,26 +1265,41 @@
     background-gradient-end: rgba(206, 232, 255, 0.64);
 }
 
-.cc-spot-circle:selected {
-    background-gradient-start: rgba(150, 202, 255, 0.92);
-    background-gradient-end: rgba(110, 176, 250, 0.80);
-    color: #0a3a78;
-}
-
 .cc-spot-circle-icon {
     icon-size: 24px;
+    color: rgba(46, 52, 66, 0.88);
 }
 
-/* --- the search capsule ------------------------------------------------------ */
+/* --- the header: glyph, chip, field, hints -------------------------------------- */
 
-.cc-spot-search-row {
+.cc-spot-header {
     spacing: 12px;
-    padding: 0 22px;
+    min-height: 62px;
+    padding: 0 18px 0 22px;
 }
 
-.cc-spot-search-icon {
-    icon-size: 24px;
+.cc-spot-lead {
+    padding: 0;
+    border-radius: 999px;
+    background-color: transparent;
+}
+
+.cc-spot-lead:hover {
+    background-color: rgba(60, 62, 70, 0.10);
+}
+
+.cc-spot-lead-icon {
+    icon-size: 22px;
     color: rgba(60, 62, 70, 0.78);
+}
+
+.cc-spot-token {
+    padding: 2px 12px;
+    border-radius: 999px;
+    background-color: rgba(10, 132, 255, 0.82);
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 600;
 }
 
 .cc-spot-entry {
@@ -1297,7 +1309,7 @@
     box-shadow: none;
     padding: 4px 0;
     min-height: 34px;
-    font-size: 23px;
+    font-size: 22px;
     color: rgba(28, 30, 38, 0.96);
     caret-color: rgba(28, 30, 38, 0.92);
     caret-size: 2px;
@@ -1316,32 +1328,72 @@
     color: rgba(60, 62, 70, 0.42);
 }
 
-/* --- the card of results ------------------------------------------------------ */
+/* The grey "— Open" that follows what is typed. */
+.cc-spot-ghost {
+    font-size: 22px;
+    color: rgba(60, 62, 70, 0.38);
+}
 
-.cc-spot-card-content {
-    padding: 12px 12px 10px;
+/* The shortcut of the circle the pointer is on. */
+.cc-spot-badge {
+    padding: 1px 8px;
+    border-radius: 999px;
+    background-color: rgba(60, 62, 70, 0.12);
+    color: rgba(60, 62, 70, 0.70);
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.cc-spot-tophit {
+    width: 28px;
+    height: 28px;
+}
+
+.cc-spot-more {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border-radius: 999px;
+    background-color: rgba(60, 62, 70, 0.08);
+}
+
+.cc-spot-more:hover,
+.cc-spot-more:focus {
+    background-color: rgba(60, 62, 70, 0.18);
+}
+
+.cc-spot-more-icon {
+    icon-size: 16px;
+    color: rgba(60, 62, 70, 0.78);
+}
+
+/* --- the body: chips, results, the application grid ----------------------------- */
+
+.cc-spot-body {
+    padding: 4px 12px 12px;
     spacing: 6px;
+    border-top: 1px solid rgba(60, 62, 70, 0.10);
 }
 
 .cc-spot-chips {
     spacing: 8px;
-    padding: 2px 4px 4px;
+    padding: 6px 4px 4px;
 }
 
 .cc-spot-chip {
     min-height: 22px;
     padding: 2px 14px;
     border-radius: 999px;
-    background-color: rgba(255, 255, 255, 0.55);
-    border: 1px solid rgba(255, 255, 255, 0.75);
-    color: rgba(50, 52, 60, 0.86);
+    background-color: rgba(255, 255, 255, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.65);
+    color: rgba(50, 52, 60, 0.82);
     font-size: 12px;
     font-weight: 600;
 }
 
 .cc-spot-chip:hover,
 .cc-spot-chip:focus {
-    background-color: rgba(255, 255, 255, 0.80);
+    background-color: rgba(255, 255, 255, 0.78);
 }
 
 .cc-spot-chip:selected {
@@ -1359,7 +1411,7 @@
 }
 
 .cc-spot-row {
-    border-radius: 16px;
+    border-radius: 14px;
     background-color: transparent;
     padding: 0;
     color: rgba(30, 32, 40, 0.96);
@@ -1402,7 +1454,13 @@
     padding: 18px 0 14px;
 }
 
-/* --- the Applications view ------------------------------------------------------ */
+.cc-spot-error {
+    font-size: 11px;
+    color: rgba(150, 40, 40, 0.80);
+    padding-bottom: 12px;
+}
+
+/* --- the application grid ---------------------------------------------------------- */
 
 .cc-spot-grid-scroll {
     max-height: 372px;
@@ -1417,10 +1475,18 @@
     spacing: 0;
 }
 
+/* Between the apps used most and all the others. */
+.cc-spot-divider {
+    height: 1px;
+    margin: 4px 12px;
+    background-color: rgba(60, 62, 70, 0.12);
+}
+
 .cc-spot-app {
     width: 116px;
     border-radius: 16px;
     background-color: transparent;
+    border: 1px solid transparent;
     padding: 0;
     color: rgba(30, 32, 40, 0.96);
 }
@@ -1431,7 +1497,8 @@
 }
 
 .cc-spot-app:selected {
-    background-color: rgba(60, 62, 70, 0.16);
+    background-color: rgba(60, 62, 70, 0.12);
+    border-color: rgba(10, 132, 255, 0.70);
 }
 
 .cc-spot-app-content {
@@ -1499,9 +1566,8 @@
 }
 
 /* Spotlight */
-.cc-spot-column.cc-glass-active .cc-spot-bar,
-.cc-spot-column.cc-glass-active .cc-spot-circle,
-.cc-spot-column.cc-glass-active .cc-spot-card {
+.cc-spot-column.cc-glass-active .cc-spot-panel,
+.cc-spot-column.cc-glass-active .cc-spot-circle {
     background-color: transparent;
     background-gradient-direction: none;
     border: none;
@@ -1513,6 +1579,131 @@
     background-color: rgba(255, 255, 255, 0.22);
 }
 
-.cc-spot-column.cc-glass-active .cc-spot-circle:selected {
-    background-color: rgba(10, 132, 255, 0.30);
+.cc-spot-column.cc-glass-active .cc-spot-body {
+    border-top-color: rgba(60, 62, 70, 0.14);
+}
+
+/* --------------------------------------------------------------------------
+ * Spotlight, light text
+ *
+ * The text follows what is behind the glass (see #adapt() in spotlight.js): the
+ * dark text above is for a bright backdrop, and this is for a dark one. The panel
+ * and each circle carry `cc-spot-light` on their own.
+ * -------------------------------------------------------------------------- */
+
+.cc-spot-panel.cc-spot-light .cc-spot-entry {
+    color: rgba(250, 250, 252, 0.98);
+    caret-color: rgba(250, 250, 252, 0.98);
+}
+
+.cc-spot-panel.cc-spot-light .cc-spot-entry StLabel.hint-text,
+.cc-spot-panel.cc-spot-light .cc-spot-entry .hint-text {
+    color: rgba(255, 255, 255, 0.56);
+}
+
+.cc-spot-panel.cc-spot-light .cc-spot-ghost {
+    color: rgba(255, 255, 255, 0.46);
+}
+
+.cc-spot-panel.cc-spot-light .cc-spot-lead-icon,
+.cc-spot-panel.cc-spot-light .cc-spot-more-icon {
+    color: rgba(255, 255, 255, 0.88);
+}
+
+.cc-spot-panel.cc-spot-light .cc-spot-lead:hover,
+.cc-spot-panel.cc-spot-light .cc-spot-more {
+    background-color: rgba(255, 255, 255, 0.14);
+}
+
+.cc-spot-panel.cc-spot-light .cc-spot-more:hover,
+.cc-spot-panel.cc-spot-light .cc-spot-more:focus {
+    background-color: rgba(255, 255, 255, 0.26);
+}
+
+.cc-spot-panel.cc-spot-light .cc-spot-badge {
+    background-color: rgba(255, 255, 255, 0.16);
+    color: rgba(255, 255, 255, 0.84);
+}
+
+.cc-spot-panel.cc-spot-light .cc-spot-body {
+    border-top-color: rgba(255, 255, 255, 0.18);
+}
+
+.cc-spot-panel.cc-spot-light .cc-spot-chip {
+    background-color: rgba(255, 255, 255, 0.16);
+    border-color: rgba(255, 255, 255, 0.30);
+    color: rgba(255, 255, 255, 0.92);
+}
+
+.cc-spot-panel.cc-spot-light .cc-spot-chip:hover,
+.cc-spot-panel.cc-spot-light .cc-spot-chip:focus {
+    background-color: rgba(255, 255, 255, 0.28);
+}
+
+.cc-spot-panel.cc-spot-light .cc-spot-chip:selected {
+    background-color: rgba(10, 132, 255, 0.82);
+    border-color: rgba(10, 132, 255, 0.90);
+    color: #ffffff;
+}
+
+.cc-spot-panel.cc-spot-light .cc-spot-row,
+.cc-spot-panel.cc-spot-light .cc-spot-app {
+    color: rgba(250, 250, 252, 0.97);
+}
+
+.cc-spot-panel.cc-spot-light .cc-spot-row:hover,
+.cc-spot-panel.cc-spot-light .cc-spot-app:hover,
+.cc-spot-panel.cc-spot-light .cc-spot-app:focus {
+    background-color: rgba(255, 255, 255, 0.12);
+}
+
+.cc-spot-panel.cc-spot-light .cc-spot-row:selected {
+    background-color: rgba(255, 255, 255, 0.22);
+}
+
+.cc-spot-panel.cc-spot-light .cc-spot-app:selected {
+    background-color: rgba(255, 255, 255, 0.16);
+    border-color: rgba(255, 255, 255, 0.55);
+}
+
+.cc-spot-panel.cc-spot-light .cc-spot-row-subtitle {
+    color: rgba(255, 255, 255, 0.64);
+}
+
+.cc-spot-panel.cc-spot-light .cc-spot-empty {
+    color: rgba(255, 255, 255, 0.68);
+}
+
+.cc-spot-panel.cc-spot-light .cc-spot-error {
+    color: rgba(255, 176, 168, 0.92);
+}
+
+.cc-spot-panel.cc-spot-light .cc-spot-divider {
+    background-color: rgba(255, 255, 255, 0.20);
+}
+
+.cc-spot-circle.cc-spot-light .cc-spot-circle-icon {
+    color: rgba(255, 255, 255, 0.94);
+}
+
+/* The battery glyph is wider than it is tall, so it gets more room than the
+ * 16px of the other glyphs. */
+.cc-glyph-battery {
+    icon-size: 22px;
+}
+
+/* --------------------------------------------------------------------------
+ * The dock
+ *
+ * While a dock has glass (dockGlass.js), its own background steps aside: Dash to
+ * Dock's container and the `dash-background` it draws.
+ * -------------------------------------------------------------------------- */
+
+#dashtodockDashContainer.cc-dock-transparent,
+.cc-dock-transparent #dashtodockContainer,
+.cc-dock-transparent .dash-background {
+    background-color: transparent !important;
+    background-image: none !important;
+    border: none !important;
+    box-shadow: none !important;
 }

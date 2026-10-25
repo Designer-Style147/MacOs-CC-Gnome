@@ -16,7 +16,7 @@
 
 SRC_DIR    := $(CURDIR)
 BUILD_DIR  := $(SRC_DIR)/build
-FILES      := metadata.json extension.js controlCenterPanel.js spotlight.js blur.js glass.js glassSurface.js stylesheet.css
+FILES      := metadata.json extension.js prefs.js controlCenterPanel.js spotlight.js blur.js glass.js glassSurface.js dockGlass.js icons.js stylesheet.css
 JS_FILES   := $(filter %.js,$(FILES))
 # Folders shipped whole: the menu-bar icon, the vendored Liquid Glass renderer (lg/)
 # and its shaders. Each is copied when present.

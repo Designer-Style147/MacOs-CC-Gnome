@@ -1,0 +1,150 @@
+// SPDX-License-Identifier: MIT
+//
+// Settings window: the look of the Liquid Glass surfaces. Every slider is bound
+// to a key of the glass schema, and the running extension follows the changes
+// at once (see setGlassSettings() in glassSurface.js).
+
+import Adw from 'gi://Adw';
+import Gio from 'gi://Gio';
+import Gtk from 'gi://Gtk';
+
+import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
+
+const GLASS_SCHEMA = 'org.gnome.shell.extensions.macos-control-center.glass';
+
+export default class ControlCenterPreferences extends ExtensionPreferences {
+    fillPreferencesWindow(window) {
+        const _ = this.gettext.bind(this);
+
+        let settings;
+        try {
+            settings = this.getSettings(GLASS_SCHEMA);
+        } catch (e) {
+            // The schema is compiled by `make install`; without it there is nothing to bind.
+            const page = new Adw.PreferencesPage({title: _('Liquid Glass')});
+            const group = new Adw.PreferencesGroup({
+                title: _('The glass settings are not installed'),
+                description: _('Run "make install" in the extension\'s folder, which compiles the settings schema, then log out and back in.'),
+            });
+            page.add(group);
+            window.add(page);
+            return;
+        }
+
+        const page = new Adw.PreferencesPage({
+            title: _('Liquid Glass'),
+            icon_name: 'preferences-desktop-appearance-symbolic',
+        });
+        window.add(page);
+
+        /**
+         * @param {Adw.PreferencesGroup} group
+         * @param {string} title
+         * @param {string} subtitle
+         * @param {string} key
+         * @param {number} lower
+         * @param {number} upper
+         * @param {number} step
+         * @param {number} digits
+         */
+        const addSlider = (group, title, subtitle, key, lower, upper, step, digits) => {
+            const row = new Adw.ActionRow({title, subtitle});
+            const scale = new Gtk.Scale({
+                orientation: Gtk.Orientation.HORIZONTAL,
+                adjustment: new Gtk.Adjustment({
+                    lower,
+                    upper,
+                    step_increment: step,
+                    page_increment: step * 5,
+                }),
+                digits,
+                draw_value: true,
+                value_pos: Gtk.PositionType.RIGHT,
+                hexpand: true,
+                width_request: 280,
+                valign: Gtk.Align.CENTER,
+            });
+            settings.bind(key, scale.get_adjustment(), 'value', Gio.SettingsBindFlags.DEFAULT);
+
+            row.add_suffix(scale);
+            row.activatable_widget = scale;
+            group.add(row);
+        };
+
+        // --- the control centre and its menus ----------------------------------
+        const menus = new Adw.PreferencesGroup({
+            title: _('Control Center and menus'),
+            description: _('The glass behind the control centre and the Wi-Fi, Bluetooth and battery menus.'),
+        });
+        addSlider(menus, _('Blur'), _('How strongly the backdrop is blurred'),
+            'menu-blur', 1, 40, 1, 0);
+        addSlider(menus, _('Tint'), _('How much of the glass colour is mixed in'),
+            'menu-tint', 0, 1, 0.01, 2);
+        addSlider(menus, _('Brightness'), _('Below 1 darkens the backdrop, above 1 brightens it'),
+            'menu-brightness', 0.5, 1.5, 0.01, 2);
+        addSlider(menus, _('Saturation'), _('Above 1 makes the colours richer'),
+            'menu-saturation', 0, 2.5, 0.05, 2);
+        page.add(menus);
+
+        // --- spotlight -----------------------------------------------------------
+        const spotlight = new Adw.PreferencesGroup({
+            title: _('Spotlight'),
+            description: _('Spotlight uses dark text, so keep its glass fairly light.'),
+        });
+        addSlider(spotlight, _('Blur'), _('How strongly the backdrop is blurred'),
+            'spot-blur', 1, 40, 1, 0);
+        addSlider(spotlight, _('Tint'), _('How much white is mixed in'),
+            'spot-tint', 0, 1, 0.01, 2);
+        addSlider(spotlight, _('Brightness'), _('Below 1 darkens the backdrop, above 1 brightens it'),
+            'spot-brightness', 0.5, 1.5, 0.01, 2);
+        addSlider(spotlight, _('Saturation'), _('Above 1 makes the colours richer'),
+            'spot-saturation', 0, 2.5, 0.05, 2);
+        page.add(spotlight);
+
+        // --- the dock -----------------------------------------------------------------
+        const dock = new Adw.PreferencesGroup({
+            title: _('Dock'),
+            description: _('Glass behind Dash to Dock or the Ubuntu Dock. Without one of them these do nothing.'),
+        });
+        const dockSwitch = new Adw.SwitchRow({title: _('Glass on the dock')});
+        settings.bind('dock-glass', dockSwitch, 'active', Gio.SettingsBindFlags.DEFAULT);
+        dock.add(dockSwitch);
+        addSlider(dock, _('Blur'), _('How strongly the backdrop is blurred'),
+            'dock-blur', 1, 40, 1, 0);
+        addSlider(dock, _('Tint'), _('How much white is mixed in'),
+            'dock-tint', 0, 1, 0.01, 2);
+        addSlider(dock, _('Brightness'), _('Below 1 darkens the backdrop, above 1 brightens it'),
+            'dock-brightness', 0.5, 1.5, 0.01, 2);
+        addSlider(dock, _('Saturation'), _('Above 1 makes the colours richer'),
+            'dock-saturation', 0, 2.5, 0.05, 2);
+        addSlider(dock, _('Corner radius'), _('In pixels'),
+            'dock-corner', 0, 60, 1, 0);
+        page.add(dock);
+
+        // --- shared ------------------------------------------------------------------
+        const shape = new Adw.PreferencesGroup({title: _('Shape')});
+        addSlider(shape, _('Corner smoothing'),
+            _('0 is a plain circular corner; towards 1 the corner becomes a continuous curve, as on macOS'),
+            'corner-smoothing', 0, 1, 0.01, 2);
+        page.add(shape);
+
+        // --- reset ---------------------------------------------------------------------
+        const reset = new Adw.PreferencesGroup();
+        const resetRow = new Adw.ActionRow({title: _('Restore the defaults')});
+        const resetButton = new Gtk.Button({
+            label: _('Reset'),
+            valign: Gtk.Align.CENTER,
+        });
+        resetButton.add_css_class('destructive-action');
+        resetButton.connect('clicked', () => {
+            for (const key of settings.settings_schema.list_keys())
+                settings.reset(key);
+        });
+        resetRow.add_suffix(resetButton);
+        reset.add(resetRow);
+        page.add(reset);
+
+        // The window keeps the settings alive for as long as it is open.
+        window._glassSettings = settings;
+    }
+}

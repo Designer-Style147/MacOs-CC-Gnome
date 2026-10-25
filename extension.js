@@ -20,6 +20,9 @@ import {
     ControlCenterPanel,
     WifiStatusIndicator,
 } from './controlCenterPanel.js';
+import {DockWatcher} from './dockGlass.js';
+import {setGlassSettings} from './glassSurface.js';
+import {setIconsPath} from './icons.js';
 import {Spotlight} from './spotlight.js';
 
 export default class ControlCenterExtension extends Extension {
@@ -27,9 +30,21 @@ export default class ControlCenterExtension extends Extension {
     #indicators = [];
     #clockHome = null;
     #spotlight = null;
+    #docks = null;
 
     enable() {
         const gettext = this.gettext.bind(this);
+
+        // Where the extension's own icons are, before anything asks for one.
+        setIconsPath(this.path);
+
+        // The look of the glass, set in the preferences. Read before any surface is
+        // made; a missing schema (not compiled yet) just leaves the defaults.
+        try {
+            setGlassSettings(this.getSettings('org.gnome.shell.extensions.macos-control-center.glass'));
+        } catch (e) {
+            console.warn(`macos-control-center: the glass settings are not available: ${e.message}`);
+        }
 
         this.#panel = new ControlCenterPanel(this);
 
@@ -68,6 +83,15 @@ export default class ControlCenterExtension extends Extension {
             this.#spotlight = null;
         }
 
+        // Glass for Dash to Dock, if it is there. Independent of everything above.
+        try {
+            this.#docks = new DockWatcher(this.path);
+            this.#docks.start();
+        } catch (e) {
+            console.error(`macos-control-center: dock glass failed to start: ${e.message}`);
+            this.#docks = null;
+        }
+
         // The Shell moves the clock back to the centre box on every session
         // mode change (lock, unlock, login screen), so the arrangement has to
         // be re-applied. #arrangeStatusArea() itself ignores those modes.
@@ -78,6 +102,9 @@ export default class ControlCenterExtension extends Extension {
 
     disable() {
         Main.sessionMode.disconnectObject(this);
+
+        this.#docks?.stop();
+        this.#docks = null;
 
         this.#spotlight?.destroy();
         this.#spotlight = null;
@@ -92,6 +119,10 @@ export default class ControlCenterExtension extends Extension {
         // which is what removes it from the status area.
         this.#panel?.destroy();
         this.#panel = null;
+
+        // Last: every surface above has let go of the settings by now.
+        setGlassSettings(null);
+        setIconsPath(null);
     }
 
     /**
