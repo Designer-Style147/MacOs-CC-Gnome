@@ -3127,13 +3127,19 @@ export class ControlCenterPanel extends PanelMenu.Button {
         this._mediaTitle.text = title || this._gettext('Not Playing');
         this._mediaArtist.text = artist || this._gettext('No media player');
 
-        // Album art placeholder; only local artwork can be loaded through Gio.
-        if (artUrl.startsWith('file://')) {
-            this._mediaArtIcon.gicon = Gio.icon_new_for_string(artUrl);
-        } else {
-            this._mediaArtIcon.gicon = null;
-            this._mediaArtIcon.icon_name = 'audio-x-generic-symbolic';
+        // Render MPRIS artwork in the fixed square art well; use the music glyph if the URI is absent or invalid.
+        let coverIcon = null;
+        if (artUrl) {
+            try {
+                coverIcon = Gio.icon_new_for_string(artUrl);
+            } catch (e) {
+                console.warn(`${LOG_PREFIX} invalid media artwork URI: ${e.message}`);
+            }
         }
+
+        this._mediaArtIcon.gicon = coverIcon;
+        if (!coverIcon)
+            this._mediaArtIcon.icon_name = 'audio-x-generic-symbolic';
 
         this._playPauseButton.icon.icon_name = playing
             ? 'media-playback-pause-symbolic'
