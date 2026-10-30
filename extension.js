@@ -35,6 +35,8 @@ export default class ControlCenterExtension extends Extension {
     #clockSignalId = 0;
     #clockTimer = 0;
     #clockOriginalText = null;
+    #clockSettings = null;
+    #clockSettingsSignalIds = [];
     #spotlight = null;
     #docks = null;
 
@@ -195,22 +197,36 @@ export default class ControlCenterExtension extends Extension {
         box.insert_child_at_index(clock, index);
     }
 
-    /** Apply the macOS-style date and 12-hour time to GNOME's existing panel clock. */
+    /** Apply the selected language and time format to GNOME's existing panel clock. */
     #updateClockFormat() {
         if (!this.#clockDisplay)
             return;
 
         const now = new Date();
-        const weekdays = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-            'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const language = this.#clockSettings?.get_string('clock-language') ?? 'en';
+        const isSpanish = language === 'es';
+        const weekdays = isSpanish
+            ? ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+            : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const months = isSpanish
+            ? ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
+                'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+            : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         const hours24 = now.getHours();
-        const hours12 = hours24 % 12 || 12;
         const minutes = String(now.getMinutes()).padStart(2, '0');
-        const period = hours24 < 12 ? 'AM' : 'PM';
+        const timeFormat = this.#clockSettings?.get_string('clock-time-format') ?? '12h';
+        let time;
+        if (timeFormat === '24h') {
+            time = `${String(hours24).padStart(2, '0')}:${minutes}`;
+        } else {
+            const hours12 = hours24 % 12 || 12;
+            const period = hours24 < 12 ? 'AM' : 'PM';
+            time = `${hours12}:${minutes} ${period}`;
+        }
 
         this.#clockDisplay.text =
-            `${weekdays[now.getDay()]} ${months[now.getMonth()]} ${now.getDate()} ${hours12}:${minutes} ${period}`;
+            `${weekdays[now.getDay()]} ${months[now.getMonth()]} ${now.getDate()} ${time}`;
     }
 
     /** Keep GNOME's native date menu and clock actor, changing only its label. */
@@ -224,6 +240,13 @@ export default class ControlCenterExtension extends Extension {
         }
 
         this.#clockOriginalText = this.#clockDisplay.text;
+        this.#clockSettings = this.getSettings();
+        for (const key of ['clock-language', 'clock-time-format']) {
+            const id = this.#clockSettings.connect(`changed::${key}`,
+                () => this.#updateClockFormat());
+            this.#clockSettingsSignalIds.push(id);
+        }
+
         this.#clockObject = dateMenu?._clock ?? null;
         if (this.#clockObject?.connect) {
             this.#clockSignalId = this.#clockObject.connect('notify::clock',
@@ -249,6 +272,12 @@ export default class ControlCenterExtension extends Extension {
             this.#clockSignalId = 0;
         }
 
+        if (this.#clockSettings) {
+            for (const id of this.#clockSettingsSignalIds)
+                this.#clockSettings.disconnect(id);
+            this.#clockSettingsSignalIds = [];
+        }
+
         const dateMenu = Main.panel.statusArea.dateMenu;
         if (this.#clockObject?.notify)
             this.#clockObject.notify('clock');
@@ -258,5 +287,6 @@ export default class ControlCenterExtension extends Extension {
         this.#clockDisplay = null;
         this.#clockObject = null;
         this.#clockOriginalText = null;
+        this.#clockSettings = null;
     }
 }
