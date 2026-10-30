@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MIT
 //
-// Settings window: the look of the Liquid Glass surfaces. Every slider is bound
-// to a key of the glass schema, and the running extension follows the changes
-// at once (see setGlassSettings() in glassSurface.js).
+// Settings window: panel clock format and the look of the Liquid Glass surfaces.
+// Glass sliders bind to the glass schema; clock choices update the panel live.
 
 import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
@@ -15,6 +14,46 @@ const GLASS_SCHEMA = 'org.gnome.shell.extensions.macos-control-center.glass';
 export default class ControlCenterPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         const _ = this.gettext.bind(this);
+
+        // --- panel clock ---------------------------------------------------------
+        const clockSettings = this.getSettings();
+        const clockPage = new Adw.PreferencesPage({
+            title: _('Panel Clock'),
+            icon_name: 'preferences-system-time-symbolic',
+        });
+        const clockGroup = new Adw.PreferencesGroup({
+            title: _('Date and time format'),
+            description: _('Choose the language and 12-hour or 24-hour clock shown in the top panel.'),
+        });
+
+        const languageRow = new Adw.ComboRow({
+            title: _('Language'),
+            model: Gtk.StringList.new([_('English'), _('Spanish')]),
+            selected: clockSettings.get_string('clock-language') === 'es' ? 1 : 0,
+        });
+        languageRow.connect('notify::selected', () => {
+            clockSettings.set_string('clock-language', languageRow.selected === 1 ? 'es' : 'en');
+        });
+        clockSettings.connect('changed::clock-language', () => {
+            languageRow.selected = clockSettings.get_string('clock-language') === 'es' ? 1 : 0;
+        });
+        clockGroup.add(languageRow);
+
+        const timeFormatRow = new Adw.ComboRow({
+            title: _('Time format'),
+            model: Gtk.StringList.new([_('12-hour (AM/PM)'), _('24-hour')]),
+            selected: clockSettings.get_string('clock-time-format') === '24h' ? 1 : 0,
+        });
+        timeFormatRow.connect('notify::selected', () => {
+            clockSettings.set_string('clock-time-format', timeFormatRow.selected === 1 ? '24h' : '12h');
+        });
+        clockSettings.connect('changed::clock-time-format', () => {
+            timeFormatRow.selected = clockSettings.get_string('clock-time-format') === '24h' ? 1 : 0;
+        });
+        clockGroup.add(timeFormatRow);
+        clockPage.add(clockGroup);
+        window.add(clockPage);
+        window._clockSettings = clockSettings;
 
         let settings;
         try {
