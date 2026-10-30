@@ -13,6 +13,7 @@
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
+import GLib from 'gi://GLib';
 
 import {
     BatteryStatusIndicator,
@@ -29,6 +30,11 @@ export default class ControlCenterExtension extends Extension {
     #panel = null;
     #indicators = [];
     #clockHome = null;
+    #clockDisplay = null;
+    #clockObject = null;
+    #clockSignalId = 0;
+    #clockTimer = 0;
+    #clockOriginalText = null;
     #spotlight = null;
     #docks = null;
 
@@ -73,6 +79,7 @@ export default class ControlCenterExtension extends Extension {
         }
 
         this.#arrangeStatusArea();
+        this.#setupClockFormat();
 
         // Spotlight is independent of the bar: if it cannot start, the control
         // centre and the glyphs above are unaffected.
@@ -109,6 +116,7 @@ export default class ControlCenterExtension extends Extension {
         this.#spotlight?.destroy();
         this.#spotlight = null;
 
+        this.#removeClockFormat();
         this.#restoreClock();
 
         for (const indicator of this.#indicators)
@@ -185,5 +193,70 @@ export default class ControlCenterExtension extends Extension {
 
         clock.get_parent()?.remove_child(clock);
         box.insert_child_at_index(clock, index);
+    }
+
+    /** Apply the macOS-style date and 12-hour time to GNOME's existing panel clock. */
+    #updateClockFormat() {
+        if (!this.#clockDisplay)
+            return;
+
+        const now = new Date();
+        const weekdays = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+            'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const hours24 = now.getHours();
+        const hours12 = hours24 % 12 || 12;
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const period = hours24 < 12 ? 'AM' : 'PM';
+
+        this.#clockDisplay.text =
+            `${weekdays[now.getDay()]} ${months[now.getMonth()]} ${now.getDate()} ${hours12}:${minutes} ${period}`;
+    }
+
+    /** Keep GNOME's native date menu and clock actor, changing only its label. */
+    #setupClockFormat() {
+        const dateMenu = Main.panel.statusArea.dateMenu;
+        this.#clockDisplay = dateMenu?._clockDisplay ?? null;
+
+        if (!this.#clockDisplay) {
+            console.warn('macos-control-center: could not find GNOME panel clock label');
+            return;
+        }
+
+        this.#clockOriginalText = this.#clockDisplay.text;
+        this.#clockObject = dateMenu?._clock ?? null;
+        if (this.#clockObject?.connect) {
+            this.#clockSignalId = this.#clockObject.connect('notify::clock',
+                () => this.#updateClockFormat());
+        }
+
+        this.#updateClockFormat();
+        this.#clockTimer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 30, () => {
+            this.#updateClockFormat();
+            return GLib.SOURCE_CONTINUE;
+        });
+    }
+
+    /** Disconnect and let GNOME redraw its normal locale-based clock on disable. */
+    #removeClockFormat() {
+        if (this.#clockTimer) {
+            GLib.Source.remove(this.#clockTimer);
+            this.#clockTimer = 0;
+        }
+
+        if (this.#clockObject && this.#clockSignalId) {
+            this.#clockObject.disconnect(this.#clockSignalId);
+            this.#clockSignalId = 0;
+        }
+
+        const dateMenu = Main.panel.statusArea.dateMenu;
+        if (this.#clockObject?.notify)
+            this.#clockObject.notify('clock');
+        else if (this.#clockDisplay && this.#clockOriginalText !== null)
+            this.#clockDisplay.text = this.#clockOriginalText;
+
+        this.#clockDisplay = null;
+        this.#clockObject = null;
+        this.#clockOriginalText = null;
     }
 }
